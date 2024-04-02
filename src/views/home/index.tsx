@@ -7,7 +7,7 @@ import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 
 // Components
 import { RequestAirdrop } from '../../components/RequestAirdrop';
-import {SendBurnTransaction} from '../../components/SendBurnTransaction';
+import {SendSPLTransaction} from '../../components/SendSPLTransaction';
 import pkg from '../../../package.json';
 
 // Store
@@ -32,7 +32,7 @@ export const HomeView: FC = ({ }) => {
     <div className="md:hero mx-auto p-4">
       <div className="md:hero-content flex flex-col">
         <div className="flex flex-col mt-2">
-        <SendBurnTransaction />
+        <SendSPLTransaction />
           <RequestAirdrop />
           <h4 className="md:w-full text-2xl text-slate-300 my-2">
           {wallet &&
