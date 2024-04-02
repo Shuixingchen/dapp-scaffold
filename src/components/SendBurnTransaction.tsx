@@ -56,6 +56,7 @@ export const SendBurnTransaction: FC = () => {
             console.log('error', `Send Transaction: Wallet not connected!`);
             return;
         }
+        
         if (!tokenAccount) {
             notify({ type: 'error', message: `token query first` });
             return;
@@ -109,11 +110,9 @@ export const SendBurnTransaction: FC = () => {
             const instructions = [
                 createTransferInstruction(
                     new PublicKey(tokenAccount),
-                    mintPublickey,
                     desTokenAccount,
                     publicKey,
                     amount,
-                    9,
                     [],
                     TOKEN_PROGRAM_ID,
                   )
@@ -137,7 +136,7 @@ export const SendBurnTransaction: FC = () => {
     return (
         <div className="flex flex-row justify-center">
             <div className="relative group items-center">
-            <button type="button" onClick={onQuery}>token query</button>
+            <button type="button" className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" onClick={onQuery}>token query</button>
             <div>
                 mint:{mintPublickey.toString()}<br/>
                 tokenAccount:{tokenAccount}<br/>
@@ -158,7 +157,7 @@ export const SendBurnTransaction: FC = () => {
                         <label htmlFor="destination">Destination: </label>
                         <input type="txt" id="destination" name="destination"  ref={destinationRef} style={{ color: 'black' }} />
                     </div>
-                    <button type="button" onClick={onAction}>Submit</button>
+                    <button type="button" className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" onClick={onAction}>Submit</button>
                 </form>
             </div>
         </div>
