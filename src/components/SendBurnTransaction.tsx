@@ -8,16 +8,24 @@ import {
     createBurnCheckedInstruction,
     createTransferCheckedInstruction,
     createTransferInstruction,
-    TOKEN_PROGRAM_ID
+    TOKEN_PROGRAM_ID,
+    TOKEN_2022_PROGRAM_ID,
+    AccountLayout,
+    createAssociatedTokenAccountInstruction
 } from '@solana/spl-token';
+
 import { useForm,useWatch } from 'react-hook-form';
+import { has } from 'immer/dist/internal';
 
 export const SendBurnTransaction: FC = () => {
     const { connection } = useConnection();
     const { publicKey, sendTransaction } = useWallet();
     const [tokenAccount, setTokenAccount] = useState<string>("");
     const [tokanBalance, setTokenBalance] = useState<string>("");
+    // const mintPublickey = new PublicKey("55NCyBy1d45FW34CUZAGaiP8ooSn6a7mZg8e1zrcsrDZ");
+    // const TOKEN_PROGRAM_ID = TOKEN_2022_PROGRAM_ID
     const mintPublickey = new PublicKey("3xL5xaJ5Zo23xRJWaEXFvzDWNNaC6mBsDwQ3VFVRKMpe");
+
 
     const selectOptionRef = useRef(null);
     const amountRef = useRef(null);
@@ -35,6 +43,8 @@ export const SendBurnTransaction: FC = () => {
             false,
             TOKEN_PROGRAM_ID
           );
+        const isMint = await checkTokenMint(connection,publicKey,tokenAccount,mintPublickey)
+        
         setTokenAccount(tokenAccount.toString())
         console.log("tokenaccount:",tokenAccount.toString())
         connection.getTokenAccountBalance(tokenAccount).then(balance => {
@@ -62,14 +72,14 @@ export const SendBurnTransaction: FC = () => {
             return;
         }
         if (action == "burn") {
-            await onBurn(publicKey, tokenAccount, sendTransaction, createBurnCheckedInstruction,amount, connection);
+            await onBurn(publicKey, tokenAccount, sendTransaction,amount, connection);
         }else if(action == "transfer") {
-            await onTransfer(publicKey, tokenAccount, sendTransaction, createTransferInstruction,amount, destination, connection);
+            await onTransfer(publicKey, tokenAccount, sendTransaction,amount, destination, connection);
         }
 
-    }, [publicKey, tokenAccount, sendTransaction, createBurnCheckedInstruction,createTransferInstruction,connection]);
+    }, [publicKey, tokenAccount, sendTransaction,connection]);
 
-    const onBurn = async (publicKey, tokenAccount,sendTransaction, createBurnCheckedInstruction,amount, connection) => {
+    const onBurn = async (publicKey:PublicKey, tokenAccount:string,sendTransaction,amount, connection) => {
         let signature: TransactionSignature = '';
         try {
             const instructions = [
@@ -98,7 +108,7 @@ export const SendBurnTransaction: FC = () => {
             console.log('error', `Transaction failed! ${error.message}`, error);
         }
     }
-    const onTransfer = async (publicKey, tokenAccount,sendTransaction, createTransferInstruction,amount, destination, connection) => {
+    const onTransfer = async (publicKey:PublicKey, tokenAccount:string,sendTransaction,amount, destination:string, connection) => {
         let signature: TransactionSignature = '';
         try {
             const desTokenAccount = await getAssociatedTokenAddress(
@@ -107,7 +117,31 @@ export const SendBurnTransaction: FC = () => {
                 false,
                 TOKEN_PROGRAM_ID
               );
-            const instructions = [
+            let instructions = []
+            const isMint = await checkTokenMint(connection,new PublicKey(destination),desTokenAccount,mintPublickey)
+            console.log("isMint:",isMint)
+            if (!isMint) {
+                instructions.push(
+                    createAssociatedTokenAccountInstruction(
+                        publicKey,
+                        desTokenAccount,
+                        new PublicKey(destination),
+                        mintPublickey,
+                        TOKEN_PROGRAM_ID,
+                    )
+                )
+            }
+            instructions.push(
+                // createTransferCheckedInstruction(
+                //     new PublicKey(tokenAccount),
+                //     mintPublickey,
+                //     desTokenAccount,
+                //     publicKey,
+                //     amount,
+                //     9,
+                //     [],
+                //     TOKEN_PROGRAM_ID,
+                // )
                 createTransferInstruction(
                     new PublicKey(tokenAccount),
                     desTokenAccount,
@@ -115,8 +149,8 @@ export const SendBurnTransaction: FC = () => {
                     amount,
                     [],
                     TOKEN_PROGRAM_ID,
-                  )
-            ];
+                )
+            )
             let latestBlockhash = await connection.getLatestBlockhash()
             const messageLegacy = new TransactionMessage({
                 payerKey: publicKey,
@@ -132,7 +166,24 @@ export const SendBurnTransaction: FC = () => {
             console.log('error', `Transaction failed! ${error.message}`, error);
         }
     }
+    const checkTokenMint = async (connection, walletPubkey:PublicKey, tokenAccount:PublicKey, mintPublickey:PublicKey) => {
+        const tokenAccounts = await connection.getTokenAccountsByOwner(walletPubkey, {
+            programId: TOKEN_PROGRAM_ID,
+            associatedTokenProgramId:mintPublickey
+        });
+        // 遍历用户的所有代币账户，寻找目标 mint 对应的账户
+        let hasTargetMint = false;
+        for (const accountInfo of tokenAccounts.value) {
+            if (tokenAccount.equals(accountInfo.pubkey)) {
+                hasTargetMint = true;
+                break;
+            }
+        }
+        return hasTargetMint;
+    }
+    const getTokenAccount = async () => {
 
+    }
     return (
         <div className="flex flex-row justify-center">
             <div className="relative group items-center">
