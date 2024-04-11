@@ -8,6 +8,7 @@ import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 // Components
 import { RequestAirdrop } from '../../components/RequestAirdrop';
 import {SendSPLTransaction} from '../../components/SendSPLTransaction';
+import { SendMetaDataTransaction } from 'components/SendMetaDataTransaction';
 import pkg from '../../../package.json';
 
 // Store
@@ -32,8 +33,11 @@ export const HomeView: FC = ({ }) => {
     <div className="md:hero mx-auto p-4">
       <div className="md:hero-content flex flex-col">
         <div className="flex flex-col mt-2">
+        <SendMetaDataTransaction />
+        <div><br/></div>
         <SendSPLTransaction />
-          <RequestAirdrop />
+        <div><br/></div>
+        <RequestAirdrop />
           <h4 className="md:w-full text-2xl text-slate-300 my-2">
           {wallet &&
           <div className="flex flex-row justify-center">

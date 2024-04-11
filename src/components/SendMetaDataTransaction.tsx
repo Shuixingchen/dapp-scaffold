@@ -2,187 +2,95 @@ import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { Keypair, PublicKey, SystemProgram,GetProgramAccountsConfig, TokenAccountsFilter,Transaction, TransactionMessage, TransactionSignature, VersionedTransaction } from '@solana/web3.js';
 import { FC, useCallback, useRef,useState,useEffect } from 'react';
 import { notify } from "../utils/notifications";
+import  useUmi from '../hooks/useUmi'
+import bs58 from 'bs58';
+
+
 import {
     getAssociatedTokenAddress,
-    TokenInstruction,
-    createBurnCheckedInstruction,
-    createTransferCheckedInstruction,
-    createTransferInstruction,
-    TOKEN_PROGRAM_ID,
-    TOKEN_2022_PROGRAM_ID,
-    AccountLayout,
     MintLayout,
-    RawMint,
-    createAssociatedTokenAccountInstruction
 } from '@solana/spl-token';
+import { generateSigner, percentAmount,publicKey as umiPublicKey } from '@metaplex-foundation/umi'
+import {
+  createV1,
+  TokenStandard,
+  createFungible,
+  createNft,
+  fetchDigitalAsset,
+  fetchAllDigitalAssetByCreator
+} from '@metaplex-foundation/mpl-token-metadata'
 
-import { useForm,useWatch } from 'react-hook-form';
-import { has } from 'immer/dist/internal';
 
 export const SendMetaDataTransaction: FC = () => {
     const { connection } = useConnection();
     const { publicKey, sendTransaction } = useWallet();
-    const [tokenAccount, setTokenAccount] = useState<string>("");
+    const [mint, setMint] = useState<string>("");
     const [tokanBalance, setTokenBalance] = useState<string>("");
-    const [mintAccount, setMintAccount] = useState<RawMint>();
-    const mintPublickey = new PublicKey("55NCyBy1d45FW34CUZAGaiP8ooSn6a7mZg8e1zrcsrDZ");
-    const TOKEN_PROGRAM_ID = TOKEN_2022_PROGRAM_ID
-    // const mintPublickey = new PublicKey("3xL5xaJ5Zo23xRJWaEXFvzDWNNaC6mBsDwQ3VFVRKMpe");
-
-
-    const selectOptionRef = useRef(null);
-    const amountRef = useRef(null);
-    const destinationRef = useRef(null);
-
-    useEffect(() => {
-        const fetchRawMint = async () => {
-            const rawMint = await getTokenAccount(mintPublickey);
-            setMintAccount(rawMint);
+    const TOKEN_PROGRAM_ID = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+    const umi = useUmi()
+    
+    const onMintToken = useCallback(async () => {
+        if (!publicKey) {
+            notify({ type: 'error', message: `Wallet not connected!` });
+            return;
         }
-        fetchRawMint();
-      }, []); 
+        const mint = generateSigner(umi)
+        const tx = await createFungible(umi, {
+            mint,
+            name: 'My Fungible',
+            uri: 'https://s.btc.com/explorer-app/pool-icons/favicon-secpool.png',
+            sellerFeeBasisPoints: percentAmount(5.5),
+        }).sendAndConfirm(umi)
+        setMint(mint.publicKey)
+        const signature = bs58.encode(Buffer.from(tx.signature))
+        console.log("signature:",signature)
+        notify({ type: 'token success', message: 'Transaction submitted!', txid: signature});
+    }, [publicKey, connection]);
 
+    const onMintNFT = useCallback(async () => {
+        if (!publicKey) {
+            notify({ type: 'error', message: `Wallet not connected!` });
+            return;
+        }
+        const mint = generateSigner(umi)
+        const tx = await createNft(umi, {
+            mint,
+            name: 'My NFT',
+            uri: 'https://example.com/my-nft.json',
+            sellerFeeBasisPoints: percentAmount(5.5),
+          }).sendAndConfirm(umi)
+        const signature = bs58.encode(Buffer.from(tx.signature))
+        console.log("nft signature:",signature)
+        notify({ type: 'success', message: 'Transaction submitted!', txid: signature});
+
+    }, [publicKey, connection]);
+
+    // 通过条件查询token信息（包含mint,metadata）
     const onQuery = useCallback(async () => {
         if (!publicKey) {
             notify({ type: 'error', message: `Wallet not connected!` });
             console.log('error', `Send Transaction: Wallet not connected!`);
             return;
         }
-        const tokenAccount = await getAssociatedTokenAddress(
-            mintPublickey,
-            publicKey,
-            false,
-            TOKEN_PROGRAM_ID
-          );
-        const isMint = await checkTokenMint(connection,publicKey,tokenAccount,mintPublickey)
-        
-        setTokenAccount(tokenAccount.toString())
-        console.log("tokenaccount:",tokenAccount.toString())
-        connection.getTokenAccountBalance(tokenAccount).then(balance => {
-            console.log(balance.value.amount)
-            setTokenBalance(balance.value.amount)
-        })
+        const mint = "ENbFWd9ZT4KZ3kHTyHPr4iHKHcF3wM6naw9QPcB5RVEt"
+        const asset = await fetchDigitalAsset(umi, umiPublicKey(mint))
+        console.log("asset:",asset)
+        const assetsA = await fetchAllDigitalAssetByCreator(umi, umiPublicKey(publicKey))
+        console.log("assetsA:",assetsA)
         
     }, [publicKey, connection]);
 
-    const onAction = useCallback(async () => {
-        const action = selectOptionRef.current.value;
-        const amount = amountRef.current.value;
-        const destination = destinationRef.current.value;
-        console.log('Action:', action);
-        console.log('Amount:', amount);
-        console.log('Destination:', destination);
+    const onUpdate = useCallback(async () => {
         if (!publicKey) {
             notify({ type: 'error', message: `Wallet not connected!` });
             console.log('error', `Send Transaction: Wallet not connected!`);
             return;
         }
         
-        if (!tokenAccount) {
-            notify({ type: 'error', message: `token query first` });
-            return;
-        }
-        if (action == "burn") {
-            await onBurn(publicKey, tokenAccount, sendTransaction,amount, connection);
-        }else if(action == "transfer") {
-            await onTransfer(publicKey, tokenAccount, sendTransaction,amount, destination, connection);
-        }
+    }, [publicKey, connection]);
 
-    }, [publicKey, tokenAccount, sendTransaction,connection]);
 
-    const onBurn = async (publicKey:PublicKey, tokenAccount:string,sendTransaction,amount, connection) => {
-        let signature: TransactionSignature = '';
-        try {
-            const instructions = [
-                createBurnCheckedInstruction(
-                    new PublicKey(tokenAccount),
-                    mintPublickey,
-                    publicKey,
-                    amount,
-                    9,
-                    [],
-                    TOKEN_PROGRAM_ID,
-                  )
-            ];
-            let latestBlockhash = await connection.getLatestBlockhash()
-            const messageLegacy = new TransactionMessage({
-                payerKey: publicKey,
-                recentBlockhash: latestBlockhash.blockhash,
-                instructions,
-            }).compileToLegacyMessage();
-            const transation = new VersionedTransaction(messageLegacy)
-            signature = await sendTransaction(transation, connection);
-            notify({ type: 'success', message: 'Transaction submitted!', txid: signature });
-            await connection.confirmTransaction({ signature, ...latestBlockhash }, 'confirmed');
-        }catch (error) {
-            notify({ type: 'error', message: `Transaction failed!`, description: error.message });
-            console.log('error', `Transaction failed! ${error.message}`, error);
-        }
-    }
-    const onTransfer = async (publicKey:PublicKey, tokenAccount:string,sendTransaction,amount, destination:string, connection) => {
-        let signature: TransactionSignature = '';
-        try {
-            const desTokenAccount = await getAssociatedTokenAddress(
-                mintPublickey,
-                new PublicKey(destination),
-                false,
-                TOKEN_PROGRAM_ID
-              );
-            let instructions = []
-            const isMint = await checkTokenMint(connection,new PublicKey(destination),desTokenAccount,mintPublickey)
-            console.log("isMint:",isMint)
-            if (!isMint) {
-                instructions.push(
-                    createAssociatedTokenAccountInstruction(
-                        publicKey,
-                        desTokenAccount,
-                        new PublicKey(destination),
-                        mintPublickey,
-                        TOKEN_PROGRAM_ID,
-                    )
-                )
-            }
-            if (TOKEN_PROGRAM_ID == new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")) {
-                instructions.push(
-                    createTransferInstruction(
-                        new PublicKey(tokenAccount),
-                        desTokenAccount,
-                        publicKey,
-                        amount,
-                        [],
-                        TOKEN_PROGRAM_ID,
-                    )
-                )
-            }else{
-                instructions.push(
-                    createTransferCheckedInstruction(
-                        new PublicKey(tokenAccount),
-                        mintPublickey,
-                        desTokenAccount,
-                        publicKey,
-                        amount,
-                        mintAccount.decimals,
-                        [],
-                        TOKEN_PROGRAM_ID,
-                    )
-                )
 
-            }
-            let latestBlockhash = await connection.getLatestBlockhash()
-            const messageLegacy = new TransactionMessage({
-                payerKey: publicKey,
-                recentBlockhash: latestBlockhash.blockhash,
-                instructions,
-            }).compileToLegacyMessage();
-            const transation = new VersionedTransaction(messageLegacy)
-            signature = await sendTransaction(transation, connection);
-            notify({ type: 'success', message: 'Transaction submitted!', txid: signature });
-            await connection.confirmTransaction({ signature, ...latestBlockhash }, 'confirmed');
-        }catch (error) {
-            notify({ type: 'error', message: `Transaction failed!`, description: error.message });
-            console.log('error', `Transaction failed! ${error.message}`, error);
-        }
-    }
     // 判断是否有ata账号
     const checkTokenMint = async (connection, walletPubkey:PublicKey, tokenAccount:PublicKey, mintPublickey:PublicKey) => {
         const tokenAccounts = await connection.getTokenAccountsByOwner(walletPubkey, {
@@ -212,28 +120,14 @@ export const SendMetaDataTransaction: FC = () => {
     return (
         <div className="flex flex-row justify-center">
             <div className="relative group items-center">
-            <button type="button" className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" onClick={onQuery}>token query</button>
-            <div>
-                mint:{mintPublickey.toString()}<br/>
-                tokenAccount:{tokenAccount}<br/>
-                tokenBalance:{tokanBalance}</div>
+                <button type="button" className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" onClick={onMintToken}>MintToken</button>
+                <button type="button" className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" onClick={onMintNFT}>MintNFT</button>
                 <form  >
                     <div>
-                        <label htmlFor="selectOption">Action: </label>
-                        <select id="selectOption" name="selectOption" ref={selectOptionRef} style={{ color: 'black' }}>
-                        <option value="burn">burn</option>
-                        <option value="transfer">transfer</option>
-                        </select>
+                        <label htmlFor="mint">Mint: </label>
+                        <input type="txt" id="mint" name="mint"  value={mint} style={{ color: 'black' }} />
                     </div>
-                    <div>
-                        <label htmlFor="amount">Amount: </label>
-                        <input type="number" id="amount" name="amount" ref={amountRef} style={{ color: 'black' }} />
-                    </div>
-                    <div>
-                        <label htmlFor="destination">Destination: </label>
-                        <input type="txt" id="destination" name="destination"  ref={destinationRef} style={{ color: 'black' }} />
-                    </div>
-                    <button type="button" className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" onClick={onAction}>Submit</button>
+                    <button type="button" className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded" onClick={onQuery}>onQuery</button>
                 </form>
             </div>
         </div>
